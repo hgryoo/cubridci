@@ -2,15 +2,19 @@
 #ARG BASE_IMAGE=mcr.microsoft.com/windows/nanoserver:1809
 #FROM $BUILD_IMAGE as installer-env
 
-FROM mcr.microsoft.com/windows/servercore:ltsc2019 AS installer
-SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+FROM mcr.microsoft.com/windows/servercore:ltsc2016 AS installer
+
+# SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 ARG CUBRID_VERSION="11.2-latest"
+
+ARG BASE_PATH="C:\\"
 ARG CUBRID_PATH="C:\cubrid"
 ARG INSTALL_PATH="C:\install"
 ARG VS_INSTALL_PATH="C:\install\vs_community.exe"
 
-ENV WORKDIR "C:\"
+ENV WORKDIR ${BASE_PATH}
 ENV INSTALLDIR ${INSTALL_PATH}
 
 ENV CUBRID_VERSION ${CUBRID_VERSION}
@@ -23,14 +27,24 @@ ENV TEST_REPORT /tmp/tests
 ENV BRANCH_TESTTOOLS develop
 ENV BRANCH_TESTCASES release/11.2
 
+ENV chocolateyUseWindowsCompression false
+
 # Install Chocolatey
-RUN Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')); \
-    [System.Environment]::SetEnvironmentVariable('PATH', "\"${env:PATH};%ALLUSERSPROFILE%\chocolatey\bin\"", 'Machine'); \
+ADD install-choco.ps1 .
+RUN .\install-choco.ps1 -Wait;
+
+#RUN [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; \
+#  Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'));
+RUN [System.Environment]::SetEnvironmentVariable('PATH', "\"${env:PATH};%ALLUSERSPROFILE%\chocolatey\bin\"", [EnvironmentVariableTarget]::Machine);
+	
+#[System.Environment]::SetEnvironmentVariable('PATH', "\"${env:PATH};%ALLUSERSPROFILE%\chocolatey\bin"", 'Machine');
+
+# SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Install tools with chocolatey
-RUN choco feature enable -n allowGlobalConfirmation;
+# RUN choco feature enable -n allowGlobalConfirmation
 RUN choco install git git-lfs git-credential-manager-for-windows --no-progress -y
-RUN choco install jdk8 --force --no-progress -y \
+RUN choco install openjdk8 --force --no-progress -y \
 RUN choco install cmake --version=3.26.3 --no-progress -y \
 RUN choco install winflexbison wixtoolset --no-progress -y \
 RUN choco install ant --ignore-dependencies --no-progress -y
@@ -62,9 +76,10 @@ RUN Copy-Item "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\
 # COPY docker-entrypoint-windows.ps1 /entrypoint.ps1
 COPY docker-entrypoint.sh /entrypoint.sh
 
+WORKDIR $WORKDIR
+
 RUN chmod 775 /entrypoint.sh
 RUN chmod 777 $WORKDIR
-WORKDIR $WORKDIR
 
 SHELL ["bash.exe", "-c"]
 ENTRYPOINT ["/docker-entrypoint.sh"]
